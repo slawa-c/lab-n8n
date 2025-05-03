@@ -1,0 +1,220 @@
+version: '3'
+
+services:
+  traefik:
+    container_name: traefik
+    image: "traefik:v3.3.5"
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    # profiles: ["core", "all"]
+    # healthcheck:
+    #   test: "traefik healthcheck --ping"
+    command: # CLI arguments
+      # Global
+      - --global.checkNewVersion=true
+      - --global.sendAnonymousUsage=false
+      # Traefik API
+      - --api=true
+      - --api.insecure=true
+      - --api.dashboard=true
+      # Docker provider
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.endpoint=unix:///var/run/docker.sock # Disable for Socket Proxy. Enable otherwise.
+      # Entry points
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.address=:80
+      - --entrypoints.traefik.address=:8282
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.http.tls=true
+      # - --entrypoints.websecure.http.tls.options=tls-opts@file
+      # - --entrypoints.websecure-internal.http.tls=true
+      # - --entrypoints.websecure-internal.http.tls.options=tls-opts@file
+      # Add route53 as default certresolver for all services. Also enables TLS and no need to specify on individual services
+      - --entrypoints.websecure.http.tls.certresolver=route53resolver
+      # - --entrypoints.websecure-internal.http.tls.certresolver=dns-cloudflare
+      - --entrypoints.websecure.http.tls.domains[0].main=${DOMAIN_NAME}
+      - --entrypoints.websecure.http.tls.domains[0].sans=*.${DOMAIN_NAME}
+      # - --entrypoints.websecure-internal.http.tls.domains[0].main=$DOMAINNAME_1
+      # - --entrypoints.websecure-internal.http.tls.domains[0].sans=*.$DOMAINNAME_1
+      # - '--entrypoints.dashboard.address=:8082'
+      # Let's Encrypt
+      - "--certificatesresolvers.route53resolver.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.route53resolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.route53resolver.acme.dnschallenge=true"
+      - "--certificatesresolvers.route53resolver.acme.dnschallenge.provider=route53"
+      - "--certificatesresolvers.route53resolver.acme.dnschallenge.resolvers=1.1.1.1:53,1.0.0.1:53" # fix DNS-01 challenge issue with AWS Route53
+      - "--certificatesResolvers.route53resolver.acme.dnsChallenge.propagation.delaybeforechecks=120" # To delay DNS check and reduce LE hitrate
+      # logging
+      - --log=true
+      - --log.filePath=/logs/traefik.log
+      - --log.level=DEBUG # (Default: error) DEBUG, INFO, WARN, ERROR, FATAL, PANIC
+      - --accessLog=true
+      - --accessLog.filePath=/logs/access.log
+      - --accessLog.bufferingSize=100 # Configuring a buffer of 100 lines
+      - --accessLog.filters.statusCodes=204-299,400-499,500-599
+
+      
+    ports:
+      - "443:443"
+      - "80:80"
+      - "8282:8282"
+    volumes:
+      - ${DATA_FOLDER}/letsencrypt:/letsencrypt
+      - ${DATA_FOLDER}/traefik3/logs:/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # - TZ=$TZ
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_HOSTED_ZONE_ID=${AWS_HOSTED_ZONE_ID}
+      - ACME_EMAIL=${ACME_EMAIL}
+    labels:
+      #___ core configs
+      - traefik.enable=true
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN_NAME}`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.service=api@internal"
+      # - "traefik.http.routers.traefik.tls=true"
+      # - "traefik.http.routers.traefik.tls.certresolver=route53resolver"
+      #___ Ping is open to the world to let third party monitor traefik availability / healthcheck) (without basicauth)
+      # - "traefik.http.routers.ping.rule=Host(`ping.${DOMAIN_NAME}`)"
+      # - "traefik.http.routers.ping.service=ping@internal"
+      # - "traefik.http.routers.ping.tls.certresolver=route53resolver"
+      # - "traefik.http.routers.ping.tls=true"
+      #___ use these middlewares
+      # - "traefik.http.routers.traefik.middlewares=auth_all,traefik-strip"
+      - "traefik.http.routers.traefik.middlewares=RuleGrpMain"
+      #___ specific middleware for traefik (it enables the traefik at mydomain.com/traefik)
+      # - "traefik.http.middlewares.traefik-strip.stripprefix.prefixes=/traefik"
+
+      # Middleware GROUPS
+      # ========================================================
+        #___ RuleGrpMain (follow bug: https://github.com/containous/traefik/issues/5890)
+      - "traefik.http.middlewares.RuleGrpMain.chain.middlewares=compress_all,ratelimit_all,retry_all,header_all"
+        #___ RuleGrpSlash
+      # - "traefik.http.middlewares.RuleGrpSlash.chain.middlewares=slash_step1,slash_step2"
+
+      # Middlewares RULES
+      # ========================================================
+      # auth_all (useful for all dashboards)
+      # - "traefik.http.middlewares.auth_all.basicauth.usersfile=/users_credentials"
+      # compress_all
+      - "traefik.http.middlewares.compress_all.compress=true"
+      # ratelimit_all
+      - "traefik.http.middlewares.ratelimit_all.ratelimit.average=100"
+      - "traefik.http.middlewares.ratelimit_all.ratelimit.burst=10"
+      # retry_all
+      - "traefik.http.middlewares.retry_all.retry.attempts=5"
+      # error_all
+      - "traefik.http.middlewares.error_all.errors.status=400-599"
+      - "traefik.http.middlewares.error_all.errors.service=serviceError"
+      - "traefik.http.middlewares.error_all.errors.query=/{status}.html"
+      # slash_step1 + slash_step2 | Add missing trailing slash
+      # - "traefik.http.middlewares.slash_step1.redirectregex.regex=^(https?://[^/]+/[a-z0-9_]+)$$"
+      # - "traefik.http.middlewares.slash_step1.redirectregex.replacement=$${1}/"
+      # - "traefik.http.middlewares.slash_step1.redirectregex.permanent=true"
+      # - "traefik.http.middlewares.slash_step2.stripprefixregex.regex=/[a-z0-9_]+"
+      # header_all
+      - "traefik.http.middlewares.header_all.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.header_all.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.header_all.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.header_all.headers.framedeny=true"
+      - "traefik.http.middlewares.header_all.headers.sslredirect=true"
+      - "traefik.http.middlewares.header_all.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.header_all.headers.stsPreload=true"
+      - "traefik.http.middlewares.header_all.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.header_all.headers.featurePolicy=accelerometer 'none'; ambient-light-sensor 'none'; camera 'none'; geolocation 'none'; gyroscope 'none'; magnetometer 'none'; microphone 'none'; usb 'none'; midi 'none'; sync-xhr 'none'; vr 'none'"
+      - "traefik.http.middlewares.header_all.headers.contentSecurityPolicy=default-src https:"
+      - "traefik.http.middlewares.header_all.headers.referrerPolicy=strict-origin-when-cross-origin"
+      # Docker swarm need a dummy service for port detection
+      - "traefik.http.services.dummy-service.loadbalancer.server.port=59999"
+
+
+  initContainer:
+    image: busybox
+    command: ['sh', '-c', 'chown -R 1000:1000 /home/node/.n8n']
+    volumes:
+      - ${DATA_FOLDER}/.n8n:/home/node/.n8n
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:1.89.2
+    ports:
+      - '5678:5678'
+    labels:
+      - traefik.enable=true
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+      - "traefik.http.routers.n8n.rule=Host(`n8n.${DOMAIN_NAME}`)"
+      # - "traefik.http.routers.n8n.tls=true"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      # - 'traefik.http.routers.n8n.rule=PathPrefix(`/${SUBFOLDER1}`)'
+      # - 'traefik.http.middlewares.n8n-stripprefix.stripprefix.prefixes=/${SUBFOLDER1}'
+      # - 'traefik.http.routers.n8n.middlewares=n8n-stripprefix'
+      # - traefik.http.routers.n8n.tls.certresolver=route53resolver
+      # - traefik.http.routers.n8n.tls.domains[0].main=${DOMAIN_NAME}
+      # - traefik.http.middlewares.n8n.headers.SSLRedirect=true
+      # - traefik.http.middlewares.n8n.headers.STSSeconds=315360000
+      # - traefik.http.middlewares.n8n.headers.browserXSSFilter=true
+      # - traefik.http.middlewares.n8n.headers.contentTypeNosniff=true
+      # - traefik.http.middlewares.n8n.headers.forceSTSHeader=true
+      # - traefik.http.middlewares.n8n.headers.SSLHost=${DOMAIN_NAME}
+      # - traefik.http.middlewares.n8n.headers.STSIncludeSubdomains=true
+      # - traefik.http.middlewares.n8n.headers.STSPreload=true
+      #### Apply rules (middlewares)
+      # - "traefik.http.routers.n8n.middlewares=RuleGrpMain"
+    environment:
+      - N8N_HOST=n8n.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_PATH
+      - N8N_EDITOR_BASE_URL=https://n8n.${DOMAIN_NAME}
+      # - WEBHOOK_URL=https://n8n.${DOMAIN_NAME}
+      - WEBHOOK_URL=https://${NGROK_DOMAIN_NAME}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_FOLDER}/.n8n:/home/node/.n8n
+    depends_on:
+      initContainer:
+        condition: service_completed_successfully
+  
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    # ports:
+      # - '3000:8080'
+    labels:
+      - traefik.enable=true
+      - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
+      # - "traefik.http.routers.openwebui.rule=Host(`${DOMAIN_NAME}`) && (PathPrefix(`/${SUBFOLDER2}`))"
+      - "traefik.http.routers.openwebui.rule=Host(`openwebui.${DOMAIN_NAME}`)"
+      # - "traefik.http.routers.openwebui.tls=true"
+      - "traefik.http.routers.openwebui.entrypoints=websecure"
+      # - "traefik.http.routers.openwebui.rule=PathPrefix(`/${SUBFOLDER2}`)"
+      # - "traefik.http.middlewares.openwebui-stripprefix.stripprefix.prefixes=/${SUBFOLDER2}"
+      # - "traefik.http.routers.openwebui.middlewares=openwebui-stripprefix"
+      # - "traefik.http.routers.openwebui.tls.certresolver=route53resolver"
+      # - "traefik.http.routers.openwebui.tls.domains[0].main=${DOMAIN_NAME}"
+      # - traefik.http.middlewares.openwebui.headers.SSLRedirect=true
+      # - traefik.http.middlewares.openwebui.headers.STSSeconds=315360000
+      # - traefik.http.middlewares.openwebui.headers.browserXSSFilter=true
+      # - traefik.http.middlewares.openwebui.headers.contentTypeNosniff=true
+      # - traefik.http.middlewares.openwebui.headers.forceSTSHeader=true
+      # - traefik.http.middlewares.openwebui.headers.SSLHost=${DOMAIN_NAME}
+      # - traefik.http.middlewares.openwebui.headers.STSIncludeSubdomains=true
+      # - traefik.http.middlewares.openwebui.headers.STSPreload=true
+      #### Apply rules (middlewares)
+      # - "traefik.http.routers.openwebui.middlewares=RuleGrpMain"
+    environment:
+      - OPENWEBUI_PATH
+      # - WEBHOOK_URL=https://${DOMAIN_NAME}${OPENWEBUI_PATH}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_FOLDER}/open-webui:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+

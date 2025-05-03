@@ -1,0 +1,6 @@
+.env
+**volumes**
+**n8n**
+**old**
+*.log
+aws-route53*.*
