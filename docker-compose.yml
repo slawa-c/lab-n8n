@@ -217,4 +217,88 @@ services:
       - ${DATA_FOLDER}/open-webui:/app/backend/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+  litellm:
+    build:
+      context: .
+      args:
+        target: runtime
+    image: ghcr.io/berriai/litellm:main-stable
+    #########################################
+    ## Uncomment these lines to start proxy with a config.yaml file ##
+    # volumes:
+    #  - ./config.yaml:/app/config.yaml <<- this is missing in the docker-compose file currently
+    # command:
+    #  - "--config=/app/config.yaml"
+    ##############################################
+    # ports:
+    #   - "4000:4000" # Map the container port to the host, change the host port if necessary
+    labels:
+      - traefik.enable=true
+      - "traefik.http.services.litellm.loadbalancer.server.port=4000"
+      # - "traefik.http.routers.litellm.rule=Host(`${DOMAIN_NAME}`) && (PathPrefix(`/${SUBFOLDER2}`))"
+      - "traefik.http.routers.litellm.rule=Host(`litellm.${DOMAIN_NAME}`)"
+      # - "traefik.http.routers.litellm.tls=true"
+      - "traefik.http.routers.litellm.entrypoints=websecure"
+      # - "traefik.http.routers.litellm.rule=PathPrefix(`/${SUBFOLDER2}`)"
+      # - "traefik.http.middlewares.litellm-stripprefix.stripprefix.prefixes=/${SUBFOLDER2}"
+      # - "traefik.http.routers.litellm.middlewares=litellm-stripprefix"
+      # - "traefik.http.routers.litellm.tls.certresolver=route53resolver"
+      # - "traefik.http.routers.litellm.tls.domains[0].main=${DOMAIN_NAME}"
+      # - traefik.http.middlewares.litellm.headers.SSLRedirect=true
+      # - traefik.http.middlewares.litellm.headers.STSSeconds=315360000
+      # - traefik.http.middlewares.litellm.headers.browserXSSFilter=true
+      # - traefik.http.middlewares.litellm.headers.contentTypeNosniff=true
+      # - traefik.http.middlewares.litellm.headers.forceSTSHeader=true
+      # - traefik.http.middlewares.litellm.headers.SSLHost=${DOMAIN_NAME}
+      # - traefik.http.middlewares.litellm.headers.STSIncludeSubdomains=true
+      # - traefik.http.middlewares.litellm.headers.STSPreload=true
+      #### Apply rules (middlewares)
+      # - "traefik.http.routers.litellm.middlewares=RuleGrpMain"
+    environment:
+      DATABASE_URL: "postgresql://llmproxy:dbpassword9090@db:5432/litellm"
+      STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_FOLDER}/litellm:/app/config.yaml
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    env_file:
+      - .env # Load local .env file
+    depends_on:
+      - db # Indicates that this service depends on the 'db' service, ensuring 'db' starts first
+    # healthcheck: # Defines the health check configuration for the container
+    #   test: [
+    #       "CMD",
+    #       "curl",
+    #       "-f",
+    #       "http://localhost:4000/health/liveliness || exit 1",
+    #     ] # Command to execute for health check
+    #   interval: 30s # Perform health check every 30 seconds
+    #   timeout: 10s # Health check command times out after 10 seconds
+    #   retries: 3 # Retry up to 3 times if health check fails
+    #   start_period: 40s # Wait 40 seconds after container start before beginning health checks
 
+  db:
+    image: postgres:16
+    restart: always
+    container_name: litellm_db
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: llmproxy
+      POSTGRES_PASSWORD: dbpassword9090
+    ports:
+      - "5432:5432"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_FOLDER}/postgres_data:/var/lib/postgresql/data # Persists Postgres data across container restarts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  # prometheus_data:
+  #   driver: local
+  postgres_data:
+    name: litellm_postgres_data # Named volume for Postgres data persistence
