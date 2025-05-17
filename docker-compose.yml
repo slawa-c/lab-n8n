@@ -210,7 +210,10 @@ services:
       #### Apply rules (middlewares)
       # - "traefik.http.routers.openwebui.middlewares=RuleGrpMain"
     environment:
-      - OPENWEBUI_PATH
+      # - OPENWEBUI_PATH
+      - WEBUI_URL=https://openwebui.${DOMAIN_NAME}
+      - WEBHOOK_URL=https://openwebui.${DOMAIN_NAME}/webhook
+      - ENABLE_SIGNUP=true
       # - WEBHOOK_URL=https://${DOMAIN_NAME}${OPENWEBUI_PATH}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
