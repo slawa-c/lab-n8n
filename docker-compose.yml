@@ -258,7 +258,7 @@ services:
       #### Apply rules (middlewares)
       # - "traefik.http.routers.litellm.middlewares=RuleGrpMain"
     environment:
-      DATABASE_URL: "postgresql://${LITELLM_POSTGRES_USER}:${LITELLM_POSTGRES_PASSWORD}@db:5432/${LITELLM_POSTGRES_DB}"
+      DATABASE_URL: "postgresql://${LITELLM_POSTGRES_USER}:${LITELLM_POSTGRES_PASSWORD}@postgresdb:5432/${LITELLM_POSTGRES_DB}"
       STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -268,7 +268,7 @@ services:
     env_file:
       - .env # Load local .env file
     depends_on:
-      - db # Indicates that this service depends on the 'db' service, ensuring 'db' starts first
+      - postgresdb # Indicates that this service depends on the 'db' service, ensuring 'db' starts first
     # healthcheck: # Defines the health check configuration for the container
     #   test: [
     #       "CMD",
@@ -281,25 +281,25 @@ services:
     #   retries: 3 # Retry up to 3 times if health check fails
     #   start_period: 40s # Wait 40 seconds after container start before beginning health checks
 
-  db:
-    image: postgres:16
-    restart: always
-    container_name: litellm_db
-    environment:
-      POSTGRES_DB: ${LITELLM_POSTGRES_DB}
-      POSTGRES_USER: ${LITELLM_POSTGRES_USER}
-      POSTGRES_PASSWORD: ${LITELLM_POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${DATA_FOLDER}/backups/postgres/db:/var/backups
-      - ${DATA_FOLDER}/postgres_data:/var/lib/postgresql/data # Persists Postgres data across container restarts
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d ${LITELLM_POSTGRES_DB} -U ${LITELLM_POSTGRES_USER}"]
-      interval: 1s
-      timeout: 5s
-      retries: 10
+  # db:
+  #   image: postgres:16
+  #   restart: always
+  #   container_name: litellm_db
+  #   environment:
+  #     POSTGRES_DB: ${LITELLM_POSTGRES_DB}
+  #     POSTGRES_USER: ${LITELLM_POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${LITELLM_POSTGRES_PASSWORD}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - ${DATA_FOLDER}/backups/postgres/db:/var/backups
+  #     - ${DATA_FOLDER}/postgres_data:/var/lib/postgresql/data # Persists Postgres data across container restarts
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -d ${LITELLM_POSTGRES_DB} -U ${LITELLM_POSTGRES_USER}"]
+  #     interval: 1s
+  #     timeout: 5s
+  #     retries: 10
   postgresdb:
     image: postgres:16
     restart: always
@@ -310,7 +310,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_MULTIPLE_DATABASES: ${LITELLM_POSTGRES_DB}:${LITELLM_POSTGRES_USER}:${LITELLM_POSTGRES_PASSWORD},${VECTORADMIN_POSTGRES_DB}:${VECTORADMIN_POSTGRES_USER}:${VECTORADMIN_POSTGRES_PASSWORD}
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DATA_FOLDER}/backups/postgres/postgresdb:/var/backups
@@ -321,6 +321,71 @@ services:
       interval: 1s
       timeout: 5s
       retries: 10
+  # vector-admin:
+  #   container_name: vector-admin
+  #   image: vector-admin:latest
+  #   build:
+  #     context: ../.
+  #     dockerfile: ./docker/Dockerfile
+  #   volumes:
+  #     - "./.env:/app/backend/.env"
+  #     - "../backend/storage:/app/backend/storage"
+  #     - "../document-processor/hotdir/:/app/document-processor/hotdir"
+  #   ports:
+  #     - "3001:3001"
+  #     - "3355:3355"
+  #     - "8288:8288"
+  anythingllm:
+    image: mintplexlabs/anythingllm
+    container_name: anythingllm
+    ports:
+    - "3001:3001"
+    cap_add:
+      - SYS_ADMIN
+    labels:
+      - traefik.enable=true
+      - "traefik.http.services.anythingllm.loadbalancer.server.port=3001"
+      # - "traefik.http.routers.anythingllm.rule=Host(`${DOMAIN_NAME}`) && (PathPrefix(`/${SUBFOLDER2}`))"
+      - "traefik.http.routers.anythingllm.rule=Host(`anythingllm.${DOMAIN_NAME}`)"
+      # - "traefik.http.routers.anythingllm.tls=true"
+      - "traefik.http.routers.anythingllm.entrypoints=websecure"
+      # - "traefik.http.routers.anythingllm.rule=PathPrefix(`/${SUBFOLDER2}`)"
+      # - "traefik.http.middlewares.anythingllm-stripprefix.stripprefix.prefixes=/${SUBFOLDER2}"
+      # - "traefik.http.routers.anythingllm.middlewares=anythingllm-stripprefix"
+      # - "traefik.http.routers.anythingllm.tls.certresolver=route53resolver"
+      # - "traefik.http.routers.anythingllm.tls.domains[0].main=${DOMAIN_NAME}"
+      # - traefik.http.middlewares.anythingllm.headers.SSLRedirect=true
+      # - traefik.http.middlewares.anythingllm.headers.STSSeconds=315360000
+      # - traefik.http.middlewares.anythingllm.headers.browserXSSFilter=true
+      # - traefik.http.middlewares.anythingllm.headers.contentTypeNosniff=true
+      # - traefik.http.middlewares.anythingllm.headers.forceSTSHeader=true
+      # - traefik.http.middlewares.anythingllm.headers.SSLHost=${DOMAIN_NAME}
+      # - traefik.http.middlewares.anythingllm.headers.STSIncludeSubdomains=true
+      # - traefik.http.middlewares.anythingllm.headers.STSPreload=true
+      #### Apply rules (middlewares)
+      # - "traefik.http.routers.anythingllm.middlewares=RuleGrpMain"
+    environment:
+    # Adjust for your environment
+      - STORAGE_DIR=/app/server/storage
+      # - JWT_SECRET="make this a large list of random numbers and letters 20+"
+      - LLM_PROVIDER=ollama
+      - OLLAMA_BASE_PATH=http://host.docker.internal:11434
+      - OLLAMA_MODEL_PREF=llama2
+      - OLLAMA_MODEL_TOKEN_LIMIT=8192
+      - EMBEDDING_ENGINE=ollama
+      - EMBEDDING_BASE_PATH=http://host.docker.internal:11434
+      - EMBEDDING_MODEL_PREF=nomic-embed-text:latest
+      - EMBEDDING_MODEL_MAX_CHUNK_LENGTH=8192
+      - VECTOR_DB=lancedb
+      - WHISPER_PROVIDER=local
+      - TTS_PROVIDER=native
+      - PASSWORDMINCHAR=8
+      # Add any other keys here for services or settings
+      # you can find in the docker/.env.example file
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_FOLDER}/anythingllm_storage:/app/server/storage
+    restart: always
 
 volumes:
   # prometheus_data:
@@ -329,3 +394,6 @@ volumes:
     name: litellm_postgres_data # Named volume for Postgres data persistence
   postgres_dbdata:
     name: postgres_app_data # Named volume for Postgres application data
+  anythingllm_storage:
+    name: anythingllm_storage # Named volume for AnythingLLM storage
+    # driver: local
