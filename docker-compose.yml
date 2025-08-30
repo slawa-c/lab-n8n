@@ -410,7 +410,31 @@ services:
     #   start_period: 40s
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
+  apachetika:
+    image: apache/tika:latest-full
+    container_name: apachetika
+    # Override default so we can add configuration on classpath
+    entrypoint: [ "/bin/sh", "-c", "exec java -cp \"/customocr:/tika-server-standard-$${TIKA_VERSION}.jar:/tika-extras/*\" org.apache.tika.server.core.TikaServerCli -h 0.0.0.0 $$0 $$@"]
+    # Kept command as example but could be added to entrypoint too
+    command: -c /tika-config.xml
+    ports:
+      - "9998:9998"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_FOLDER}/apachetika_data:/tika-config.xml # Persists Apache Tika data across container restarts
+    environment:
+      # - TIKA_SERVER_HOST=host.docker.internal
+    restart: unless-stopped
+    # profiles: ["core", "all"]
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://apachetika:9998/api/v1/heartbeat"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  
 
 volumes:
   # prometheus_data:
