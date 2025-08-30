@@ -421,10 +421,10 @@ services:
       - "9998:9998"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${DATA_FOLDER}/apachetika_data:/tika-config.xml # Persists Apache Tika data across container restarts
-    environment:
+      - ${DATA_FOLDER}/apachetika_data/tika-config-rendered.xml:/tika-config.xml # Persists Apache Tika data across container restarts
+    # environment:
       # - TIKA_SERVER_HOST=host.docker.internal
-    restart: unless-stopped
+    restart: on-failure
     # profiles: ["core", "all"]
     # healthcheck:
     #   test: ["CMD", "curl", "-f", "http://apachetika:9998/api/v1/heartbeat"]
