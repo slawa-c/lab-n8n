@@ -142,7 +142,7 @@ services:
       - ${DATA_FOLDER}/.n8n:/home/node/.n8n
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:1.100.1
+    image: docker.n8n.io/n8nio/n8n:latest
     ports:
       - '5678:5678'
     labels:
@@ -387,6 +387,30 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DATA_FOLDER}/anythingllm_storage:/app/server/storage
     restart: always
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_FOLDER}/chromadb_data:/data # Persists ChromaDB data across container restarts
+    environment:
+      # - CHROMA_SERVER_HOST=host.docker.internal
+      # - CHROMA_SERVER_HTTP_PORT=8000
+      # - PERSIST_DIRECTORY=/chroma/chroma
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=${ANONYMIZED_TELEMETRY:-TRUE}
+    restart: unless-stopped
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://chromadb:8000/api/v1/heartbeat"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 
 volumes:
   # prometheus_data:
@@ -398,3 +422,7 @@ volumes:
   anythingllm_storage:
     name: anythingllm_storage # Named volume for AnythingLLM storage
     # driver: local
+  chromadb_data:
+    name: chromadb_data # Named volume for ChromaDB data
+  apachetika_data:
+    name: apachetika_data # Named volume for Apache Tika data
