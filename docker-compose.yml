@@ -174,8 +174,8 @@ services:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_PATH
       - N8N_EDITOR_BASE_URL=https://n8n.${DOMAIN_NAME}
-      # - WEBHOOK_URL=https://n8n.${DOMAIN_NAME}
-      - WEBHOOK_URL=https://${NGROK_DOMAIN_NAME}
+      - WEBHOOK_URL=https://n8n.${DOMAIN_NAME}
+      # - WEBHOOK_URL=https://${NGROK_DOMAIN_NAME}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DATA_FOLDER}/.n8n:/home/node/.n8n
@@ -185,8 +185,8 @@ services:
   
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
-    # ports:
-      # - '3000:8080'
+    ports:
+      - '3000:8080'
     labels:
       - traefik.enable=true
       - "traefik.http.services.openwebui.loadbalancer.server.port=8080"
