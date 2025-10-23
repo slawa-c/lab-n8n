@@ -1,6 +1,20 @@
 version: '3'
 
+networks:
+  ext:
+    name: external_network
+
 services:
+  cftunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    hostname: cloudflared
+    restart: unless-stopped
+    command: tunnel --edge-ip-version 6 run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - ext
   traefik:
     container_name: traefik
     image: "traefik:v3.3.5"
@@ -57,7 +71,8 @@ services:
       - --accessLog.bufferingSize=100 # Configuring a buffer of 100 lines
       - --accessLog.filters.statusCodes=204-299,400-499,500-599
 
-      
+    networks:
+      - ext
     ports:
       - "443:443"
       - "80:80"
@@ -143,6 +158,8 @@ services:
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
+    networks:
+      - ext
     ports:
       - '5678:5678'
     labels:
@@ -183,8 +200,10 @@ services:
       initContainer:
         condition: service_completed_successfully
   
-  open-webui:
+  openwebui:
     image: ghcr.io/open-webui/open-webui:main
+    networks:
+      - ext
     ports:
       - '3000:8080'
     labels:
@@ -233,6 +252,8 @@ services:
     # command:
     #  - "--config=/app/config.yaml"
     ##############################################
+    networks:
+      - ext
     ports:
       - "4000:4000" # Map the container port to the host, change the host port if necessary
     labels:
@@ -281,25 +302,6 @@ services:
     #   retries: 3 # Retry up to 3 times if health check fails
     #   start_period: 40s # Wait 40 seconds after container start before beginning health checks
 
-  # db:
-  #   image: postgres:16
-  #   restart: always
-  #   container_name: litellm_db
-  #   environment:
-  #     POSTGRES_DB: ${LITELLM_POSTGRES_DB}
-  #     POSTGRES_USER: ${LITELLM_POSTGRES_USER}
-  #     POSTGRES_PASSWORD: ${LITELLM_POSTGRES_PASSWORD}
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #     - ${DATA_FOLDER}/backups/postgres/db:/var/backups
-  #     - ${DATA_FOLDER}/postgres_data:/var/lib/postgresql/data # Persists Postgres data across container restarts
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -d ${LITELLM_POSTGRES_DB} -U ${LITELLM_POSTGRES_USER}"]
-  #     interval: 1s
-  #     timeout: 5s
-  #     retries: 10
   postgresdb:
     image: postgres:16
     restart: always
@@ -309,6 +311,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_MULTIPLE_DATABASES: ${LITELLM_POSTGRES_DB}:${LITELLM_POSTGRES_USER}:${LITELLM_POSTGRES_PASSWORD},${VECTORADMIN_POSTGRES_DB}:${VECTORADMIN_POSTGRES_USER}:${VECTORADMIN_POSTGRES_PASSWORD}
+    networks:
+      - ext
     ports:
       - "5432:5432"
     volumes:
@@ -338,6 +342,8 @@ services:
   anythingllm:
     image: mintplexlabs/anythingllm
     container_name: anythingllm
+    networks:
+      - ext
     ports:
     - "3001:3001"
     cap_add:
@@ -390,6 +396,8 @@ services:
   chromadb:
     image: chromadb/chroma:latest
     container_name: chromadb
+    networks:
+      - ext
     ports:
       - "8000:8000"
     volumes:
@@ -417,6 +425,8 @@ services:
     entrypoint: [ "/bin/sh", "-c", "exec java -cp \"/customocr:/tika-server-standard-$${TIKA_VERSION}.jar:/tika-extras/*\" org.apache.tika.server.core.TikaServerCli -h 0.0.0.0 $$0 $$@"]
     # Kept command as example but could be added to entrypoint too
     command: -c /tika-config.xml
+    networks:
+      - ext
     ports:
       - "9998:9998"
     volumes:
