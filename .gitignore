@@ -5,3 +5,4 @@
 *.log
 aws-route53*.*
 .DS_Store
+**backups**
