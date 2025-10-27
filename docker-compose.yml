@@ -15,6 +15,18 @@ services:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
       - ext
+  whoami:
+    image: traefik/whoami
+    container_name: whoami
+    restart: unless-stopped
+    command:
+       # It tells whoami to start listening on 8088 instead of 80
+       - --port=8088
+       - --name=iamfoo
+    networks:
+      - ext
+    ports:
+      - 8088:8088
   traefik:
     container_name: traefik
     image: "traefik:v3.3.5"
